@@ -1,7 +1,5 @@
 package com.small.mybatis.datasource;
 
-import com.alibaba.druid.support.ibatis.DruidDataSourceFactory;
-
 import javax.sql.DataSource;
 
 /**
@@ -12,8 +10,7 @@ import javax.sql.DataSource;
  * @Version 1.0
  **/
 public class DefaultDataSourceFactory implements DataSourceFactory {
-    public DataSource
-    getDataSource(String name) {
+    public DataSource getDataSource(String name) {
         DataSource dataSource = null;
         if (name.equals("org.apache.commons.dbcp2.BasicDataSource")) {
             dataSource = new DBCPDataSourceFactory().getDataSource();

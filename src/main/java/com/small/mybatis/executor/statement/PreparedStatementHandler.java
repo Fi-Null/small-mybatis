@@ -36,7 +36,7 @@ public class PreparedStatementHandler extends BaseStatementHandler {
 
     @Override
     public Statement prepare(Connection connection) throws SQLException {
-        String sql = configuration.getSql();
+        String sql = configuration.get();
         Map<String, Integer> parameterMap = new HashMap<>();
         sql = ParametersUtil.preparedStatementSql(sql, parameterMap);
         configuration.setSql(sql);

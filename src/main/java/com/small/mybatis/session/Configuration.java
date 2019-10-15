@@ -27,47 +27,50 @@ import java.util.List;
 
 public class Configuration {
 
-    private MapperBean mapper;
+    private MapperBean mapperBean;
 
     private static ClassLoader loader = ClassLoader.getSystemClassLoader();
 
     private MapperRegistry mapperRegistry;
-    private String mapperInterfaceName;
-    private String resultType;
-    private String sql;
-    private Class mapperInterface;
-    private Class resultClass;
+//    private String mapperInterfaceName;
+//    private String resultType;
+//    private String sql;
+//    private Class mapperInterface;
+//    private Class resultClass;
     private String dataSourceName;
 
-    public Configuration() throws ClassNotFoundException {
-        readMapper(null);
+    public Configuration(String path) throws ClassNotFoundException {
 
-        mapperInterfaceName = "batisDemo.dao.DepartmentMapper";
-        sql = "select id,dept_name departmentName from t_dept where id = ${id}";
-        resultType = "batisDemo.bean.Department";
-        mapperInterface = Class.forName(mapperInterfaceName);
-        resultClass = Class.forName(resultType);
-        mapperRegistry = new MapperRegistry(this);
-        dataSourceName = "org.apache.commons.dbcp2.BasicDataSource";
+        mapperBean = readMapper(path);
+
+//        mapperInterfaceName = "batisDemo.dao.DepartmentMapper";
+//        sql = "select id,dept_name departmentName from t_dept where id = ${id}";
+//        resultType = "batisDemo.bean.Department";
+//        mapperInterface = Class.forName(mapperInterfaceName);
+//        resultClass = Class.forName(resultType);
+         mapperRegistry = new MapperRegistry(this);
+         dataSourceName = "org.apache.commons.dbcp2.BasicDataSource";
     }
 
-    private void readMapper(String path) {
+    private MapperBean readMapper(String path) throws ClassNotFoundException {
         MapperBean mapper = new MapperBean();
         try {
             InputStream stream = loader.getResourceAsStream(path);
             SAXReader reader = new SAXReader();
             Document document = reader.read(stream);
             Element root = document.getRootElement();
-            mapper.setInterfaceName(root.attributeValue("nameSpace").trim()); //把mapper节点的nameSpace值存为接口名
+            String nameSpace = root.attributeValue("nameSpace").trim();
+            mapper.setInterfaceName(nameSpace); //把mapper节点的nameSpace值存为接口名
+            mapper.setMapperInterface(Class.forName(nameSpace));
             List list = new ArrayList();
             for (Iterator rootIter = root.elementIterator(); rootIter.hasNext(); ) {//遍历根节点下所有子节点
                 Function fun = new Function();    //用来存储一条方法的信息
                 Element e = (Element) rootIter.next();
-                String sqltype = e.getName().trim();
+                //String sqltype = e.getName().trim();
                 String funcName = e.attributeValue("id").trim();
                 String sql = e.getText().trim();
                 String resultType = e.attributeValue("resultType").trim();
-                fun.setSqltype(sqltype);
+                //fun.setSqltype(sqltype);
                 fun.setFuncName(funcName);
                 Object newInstance = null;
                 try {
@@ -84,10 +87,11 @@ public class Configuration {
                 list.add(fun);
             }
             mapper.setFunctions(list);
-
         } catch (DocumentException e) {
             e.printStackTrace();
         }
+
+        return mapper;
     }
 
     public <T> T getMapper(Class<T> type, SqlSession sqlSession) {
@@ -117,45 +121,45 @@ public class Configuration {
         this.mapperRegistry = mapperRegistry;
     }
 
-    public String getMapperInterfaceName() {
-        return mapperInterfaceName;
-    }
-
-    public void setMapperInterfaceName(String mapperInterfaceName) {
-        this.mapperInterfaceName = mapperInterfaceName;
-    }
-
-    public String getResultType() {
-        return resultType;
-    }
-
-    public void setResultType(String resultType) {
-        this.resultType = resultType;
-    }
-
-    public String getSql() {
-        return sql;
-    }
-
-    public void setSql(String sql) {
-        this.sql = sql;
-    }
-
-    public Class getMapperInterface() {
-        return mapperInterface;
-    }
-
-    public void setMapperInterface(Class mapperInterface) {
-        this.mapperInterface = mapperInterface;
-    }
-
-    public Class getResultClass() {
-        return resultClass;
-    }
-
-    public void setResultClass(Class resultClass) {
-        this.resultClass = resultClass;
-    }
+//    public String getMapperInterfaceName() {
+//        return mapperInterfaceName;
+//    }
+//
+//    public void setMapperInterfaceName(String mapperInterfaceName) {
+//        this.mapperInterfaceName = mapperInterfaceName;
+//    }
+//
+//    public String getResultType() {
+//        return resultType;
+//    }
+//
+//    public void setResultType(String resultType) {
+//        this.resultType = resultType;
+//    }
+//
+//    public String getSql() {
+//        return sql;
+//    }
+//
+//    public void setSql(String sql) {
+//        this.sql = sql;
+//    }
+//
+//    public Class getMapperInterface() {
+//        return mapperInterface;
+//    }
+//
+//    public void setMapperInterface(Class mapperInterface) {
+//        this.mapperInterface = mapperInterface;
+//    }
+//
+//    public Class getResultClass() {
+//        return resultClass;
+//    }
+//
+//    public void setResultClass(Class resultClass) {
+//        this.resultClass = resultClass;
+//    }
 
     public String getDataSourceName() {
         return dataSourceName;
@@ -163,5 +167,13 @@ public class Configuration {
 
     public void setDataSourceName(String dataSourceName) {
         this.dataSourceName = dataSourceName;
+    }
+
+    public MapperBean getMapperBean() {
+        return mapperBean;
+    }
+
+    public void setMapperBean(MapperBean mapperBean) {
+        this.mapperBean = mapperBean;
     }
 }

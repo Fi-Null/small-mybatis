@@ -1,9 +1,12 @@
 package com.small.mybatis.binding;
 
+import com.small.mybatis.session.Configuration;
+import com.small.mybatis.session.Function;
 import com.small.mybatis.session.SqlSession;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.util.List;
 
 /**
  * @ClassName MapperProxy
@@ -14,17 +17,33 @@ import java.lang.reflect.Method;
  **/
 public class MapperProxy<T> implements InvocationHandler {
     private SqlSession sqlSession;
-    private String sql;
+    private Configuration configuration;
 
-    public MapperProxy(SqlSession sqlSession, String sql) {
+    public MapperProxy(SqlSession sqlSession, Configuration configuration) {
         this.sqlSession = sqlSession;
-        this.sql = sql;
+        this.configuration = configuration;
     }
 
 
     @Override
     public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-        MapperMethod mapperMethod = new MapperMethod(method);
-        return mapperMethod.execute(sqlSession, args);
+
+        if (!method.getDeclaringClass().getName().equals(configuration.getMapperBean().getInterfaceName())) {
+            return null;
+        }
+
+        List<Function> list = configuration.getMapperBean().getFunctions();
+        if(null != list || 0 != list.size()){
+            for (Function function : list) {
+                //id是否和接口方法名一样
+                if(method.getName().equals(function.getFuncName())){
+                    MapperMethod mapperMethod = new MapperMethod(method);
+                    return mapperMethod.execute(sqlSession, args);
+                }
+            }
+        }
+
+
+        return null;
     }
 }

@@ -21,11 +21,11 @@ public class MapperProxyFactory<T> {
     }
 
     private T newInstance(MapperProxy<T> mapperProxy) {
-        return (T) Proxy.newProxyInstance(configuration.getMapperInterface().getClassLoader(), new Class[]{this.configuration.getMapperInterface()}, mapperProxy);
+        return (T) Proxy.newProxyInstance(configuration.getMapperBean().getMapperInterface().getClassLoader(), new Class[]{this.configuration.getMapperBean().getMapperInterface()}, mapperProxy);
     }
 
     public T newInstance(SqlSession sqlSession) {
-        MapperProxy<T> mapperProxy = new MapperProxy<>(sqlSession, configuration.getSql());
+        MapperProxy<T> mapperProxy = new MapperProxy<>(sqlSession);
         return newInstance(mapperProxy);
     }
 
