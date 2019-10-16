@@ -1,179 +1,165 @@
 package com.small.mybatis.session;
 
-import com.small.mybatis.binding.MapperRegistry;
-import com.small.mybatis.executor.parameter.DefaultParameterHandler;
-import com.small.mybatis.executor.parameter.ParameterHandler;
-import com.small.mybatis.executor.resultset.DefaultResultHandler;
-import com.small.mybatis.executor.resultset.ResultSetHandler;
-import com.small.mybatis.executor.statement.RoutingStatementHandler;
-import com.small.mybatis.executor.statement.StatementHandler;
-import org.dom4j.Document;
-import org.dom4j.DocumentException;
-import org.dom4j.Element;
-import org.dom4j.io.SAXReader;
+import com.small.mybatis.TestMybatis;
+import com.small.mybatis.annotation.Pojo;
+import com.small.mybatis.annotation.Select;
+import com.small.mybatis.binding.MapperRegistory;
+import com.small.mybatis.cache.CacheExecutor;
+import com.small.mybatis.executor.Executor;
+import com.small.mybatis.executor.SimpleExecutor;
+import com.small.mybatis.plugin.Interceptor;
+import com.small.mybatis.plugin.InterceptorChain;
 
-import java.io.InputStream;
+import java.io.File;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @ClassName Configuration
  * @Description TODO
  * @Author xiangke
- * @Date 2019/10/13 23:57
+ * @Date 2019/10/16 22:58
  * @Version 1.0
  **/
-
 public class Configuration {
 
-    private MapperBean mapperBean;
+    public static final MapperRegistory mapperRegistory = new MapperRegistory();
+    public static final Map<String, String> mappedStatements = new HashMap<>();
 
-    private static ClassLoader loader = ClassLoader.getSystemClassLoader();
+    private InterceptorChain interceptorChain = new InterceptorChain();
+    private boolean enableCache = false;
+    private List<Class<?>> mapperList = new ArrayList<>();
+    private List<String> classPaths = new ArrayList<>();
 
-    private MapperRegistry mapperRegistry;
-//    private String mapperInterfaceName;
-//    private String resultType;
-//    private String sql;
-//    private Class mapperInterface;
-//    private Class resultClass;
-    private String dataSourceName;
-
-    public Configuration(String path) throws ClassNotFoundException {
-
-        mapperBean = readMapper(path);
-
-//        mapperInterfaceName = "batisDemo.dao.DepartmentMapper";
-//        sql = "select id,dept_name departmentName from t_dept where id = ${id}";
-//        resultType = "batisDemo.bean.Department";
-//        mapperInterface = Class.forName(mapperInterfaceName);
-//        resultClass = Class.forName(resultType);
-         mapperRegistry = new MapperRegistry(this);
-         dataSourceName = "org.apache.commons.dbcp2.BasicDataSource";
+    /**
+     * 初始化时Configuration加载所有Mapper信息、plugin信息、缓存是否开启信息
+     */
+    public Configuration(String mapperPath, String[] pluginPath, boolean enableCache) throws ClassNotFoundException, IllegalAccessException, InstantiationException {
+        //扫描mapper路径，将必要的mapper信息存入mapperRegistory与mapperStatements
+        scanPackage(mapperPath);
+        for (Class<?> mapper : mapperList) {
+            //当类为接口时视其为mapper，开始解析它
+            //Myabtis中判断是否为mapper还用到了isIndependent的方法判断，较为复杂，这里简化，体现思想即可
+            if (mapper.isInterface()) {
+                parsingClass(mapper);
+            }
+        }
+        if (pluginPath != null) {
+            //遍历plugin路径，初始化plugin并放入list中
+            for (String plugin : pluginPath) {
+                Interceptor interceptor = (Interceptor) Class.forName(plugin).newInstance();
+                interceptorChain.addInterceptor(interceptor);
+            }
+        }
+        //设置缓存是否开启
+        this.enableCache = enableCache;
     }
 
-    private MapperBean readMapper(String path) throws ClassNotFoundException {
-        MapperBean mapper = new MapperBean();
-        try {
-            InputStream stream = loader.getResourceAsStream(path);
-            SAXReader reader = new SAXReader();
-            Document document = reader.read(stream);
-            Element root = document.getRootElement();
-            String nameSpace = root.attributeValue("nameSpace").trim();
-            mapper.setInterfaceName(nameSpace); //把mapper节点的nameSpace值存为接口名
-            mapper.setMapperInterface(Class.forName(nameSpace));
-            List list = new ArrayList();
-            for (Iterator rootIter = root.elementIterator(); rootIter.hasNext(); ) {//遍历根节点下所有子节点
-                Function fun = new Function();    //用来存储一条方法的信息
-                Element e = (Element) rootIter.next();
-                //String sqltype = e.getName().trim();
-                String funcName = e.attributeValue("id").trim();
-                String sql = e.getText().trim();
-                String resultType = e.attributeValue("resultType").trim();
-                //fun.setSqltype(sqltype);
-                fun.setFuncName(funcName);
-                Object newInstance = null;
-                try {
-                    newInstance = Class.forName(resultType).newInstance();
-                } catch (InstantiationException e1) {
-                    e1.printStackTrace();
-                } catch (IllegalAccessException e1) {
-                    e1.printStackTrace();
-                } catch (ClassNotFoundException e1) {
-                    e1.printStackTrace();
+    /**
+     * MapperProxy根据statementName查找是否有对应SQL
+     */
+    public boolean hasStatement(String statementName) {
+        return mappedStatements.containsKey(statementName);
+    }
+
+    /**
+     * MapperProxy根据statementID获取SQL
+     */
+    public String getMappedStatement(String id) {
+        return mappedStatements.get(id);
+    }
+
+    public <T> T getMapper(Class<T> clazz, SqlSession sqlSession) {
+        return mapperRegistory.getMapper(clazz, sqlSession);
+    }
+
+    /**
+     * 创建一个Executor(因为加入了plugin功能，需要判断是否创建带plugin的executor)
+     */
+    public Executor newExecutor() {
+        Executor executor = createExecutor();
+        if (interceptorChain.hasPlugin()) {
+            return (Executor) interceptorChain.pluginAll(executor);
+        }
+        return executor;
+    }
+
+    /**
+     * 创建一个Executor(需要判断是否创建带缓存功能的executor)
+     */
+    private Executor createExecutor() {
+        if (enableCache) {
+            return new CacheExecutor(new SimpleExecutor());
+        }
+        return new SimpleExecutor();
+    }
+
+    /**
+     * 解析类中的注解
+     */
+    private void parsingClass(Class<?> mapper) {
+        //如有Pojo注解，则可以获取到实体类的信息
+        if (mapper.isAnnotationPresent(Pojo.class)) {
+            for (Annotation annotation : mapper.getAnnotations()) {
+                if (annotation.annotationType().equals(Pojo.class)) {
+                    //将mapper与实体类信息注册进mapperRegistory中
+                    mapperRegistory.addMapper(mapper, ((Pojo) annotation).value());
                 }
-                fun.setResultType(newInstance);
-                fun.setSql(sql);
-                list.add(fun);
             }
-            mapper.setFunctions(list);
-        } catch (DocumentException e) {
-            e.printStackTrace();
         }
 
-        return mapper;
+        Method[] methods = mapper.getMethods();
+        for (Method method : methods) {
+            //TODO 新增Update、Delete、Insert注解
+            //如果有Select注解就解析SQL语句
+            if (method.isAnnotationPresent(Select.class)) {
+                for (Annotation annotation : method.getDeclaredAnnotations()) {
+                    if (annotation.annotationType().equals(Select.class)) {
+                        //将方法名与SQL语句注册进mappedStatements中
+                        mappedStatements.put(method.getDeclaringClass().getName() + "." + method.getName(),
+                                ((Select) annotation).value());
+                    }
+                }
+            }
+        }
     }
 
-    public <T> T getMapper(Class<T> type, SqlSession sqlSession) {
-        return this.mapperRegistry.getMapper(type, sqlSession);
+    /**
+     * 扫描包名，获取包下的所有.class文件
+     */
+    private void scanPackage(String mapperPath) throws ClassNotFoundException {
+        String classPath = TestMybatis.class.getResource("/").getPath();
+        mapperPath = mapperPath.replace(".", File.separator);
+        String mainPath = classPath + mapperPath;
+        doPath(new File(mainPath));
+        for (String className : classPaths) {
+            className = className.replace(classPath.replace("/", "\\").replaceFirst("\\\\", ""), "").replace("\\", ".").replace(".class", "");
+            Class<?> clazz = Class.forName(className);
+            mapperList.add(clazz);
+        }
     }
 
-    public StatementHandler newStatementHandler(Object[] args) {
-        StatementHandler statementHandler = new RoutingStatementHandler(this, args);
-        return statementHandler;
+    /**
+     * 该方法会得到所有的类，将类的绝对路径写入到classPaths中
+     */
+    private void doPath(File file) {
+        if (file.isDirectory()) {//文件夹
+            //文件夹我们就递归
+            File[] files = file.listFiles();
+            for (File f1 : files) {
+                doPath(f1);
+            }
+        } else {//标准文件
+            //标准文件我们就判断是否是class文件
+            if (file.getName().endsWith(".class")) {
+                //如果是class文件我们就放入我们的集合中。
+                classPaths.add(file.getPath());
+            }
+        }
     }
 
-    public ParameterHandler newParameterHandler(Object[] args) {
-        ParameterHandler parameterHandler = new DefaultParameterHandler(this, args);
-        return parameterHandler;
-    }
-
-    public ResultSetHandler newResultHandler() {
-        ResultSetHandler resultSetHandler = new DefaultResultHandler(this);
-        return resultSetHandler;
-    }
-
-    public MapperRegistry getMapperRegistry() {
-        return mapperRegistry;
-    }
-
-    public void setMapperRegistry(MapperRegistry mapperRegistry) {
-        this.mapperRegistry = mapperRegistry;
-    }
-
-//    public String getMapperInterfaceName() {
-//        return mapperInterfaceName;
-//    }
-//
-//    public void setMapperInterfaceName(String mapperInterfaceName) {
-//        this.mapperInterfaceName = mapperInterfaceName;
-//    }
-//
-//    public String getResultType() {
-//        return resultType;
-//    }
-//
-//    public void setResultType(String resultType) {
-//        this.resultType = resultType;
-//    }
-//
-//    public String getSql() {
-//        return sql;
-//    }
-//
-//    public void setSql(String sql) {
-//        this.sql = sql;
-//    }
-//
-//    public Class getMapperInterface() {
-//        return mapperInterface;
-//    }
-//
-//    public void setMapperInterface(Class mapperInterface) {
-//        this.mapperInterface = mapperInterface;
-//    }
-//
-//    public Class getResultClass() {
-//        return resultClass;
-//    }
-//
-//    public void setResultClass(Class resultClass) {
-//        this.resultClass = resultClass;
-//    }
-
-    public String getDataSourceName() {
-        return dataSourceName;
-    }
-
-    public void setDataSourceName(String dataSourceName) {
-        this.dataSourceName = dataSourceName;
-    }
-
-    public MapperBean getMapperBean() {
-        return mapperBean;
-    }
-
-    public void setMapperBean(MapperBean mapperBean) {
-        this.mapperBean = mapperBean;
-    }
 }

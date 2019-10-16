@@ -1,32 +1,45 @@
 package com.small.mybatis.session;
 
+import com.small.mybatis.executor.Executor;
+
 /**
  * @ClassName SqlSession
  * @Description TODO
  * @Author xiangke
- * @Date 2019/10/13 23:59
+ * @Date 2019/10/16 23:09
  * @Version 1.0
  **/
+public class SqlSession {
 
+    //持有两个关键对象
+    private Configuration configuration;
+    private Executor executor;
 
-import java.io.Closeable;
-import java.sql.Connection;
-import java.sql.SQLException;
+    /**
+     * 用构造器将两个对象形成关系
+     */
+    public SqlSession(Configuration configuration) {
+        this.configuration = configuration;
+        //这里需要决定是否开启缓存，则从Configuraton中判断是否需要缓存，创建对应Executor
+        this.executor = configuration.newExecutor();
+    }
 
-/**
- * Closeable接口和try-with-resource结构相关。
- * 当采用try-with-resource时，try块执行完毕后会调用close方法。
- * try-with-resource块如果有多个资源，释放顺序与创建相反
- * 如果try块发生异常，会先依次colse，然后再catch，最后finally
- * try-with-resource无需显式调用资源释放
- */
-public interface SqlSession extends Closeable {
+    public Configuration getConfiguration() {
+        return configuration;
+    }
 
-    <T> T getMapper(Class<T> interfaceClass);
+    /**
+     * 委派configuration获取mapper
+     */
+    public <T> T getMapper(Class<T> clazz) {
+        return configuration.getMapper(clazz, this);
+    }
 
-    Connection getConnection() throws SQLException;
+    /**
+     * 委派executor查询
+     */
+    public <T> T selectOne(String statement, String parameter, Class pojo) throws Exception {
+        return executor.query(statement, parameter, pojo);
+    }
 
-    <T> T selectOne(Object[] args) throws Exception;
-
-    void close();
 }
